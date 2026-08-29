@@ -118,6 +118,23 @@
   .btn-primary{background:var(--ink);color:var(--paper);}
   .btn-ghost{background:transparent;color:#6b6248;border:1px solid var(--paper-line);}
 
+  .items-list{margin-top:6px;}
+  .item-row{
+    display:grid;grid-template-columns:1.4fr 1fr .7fr auto;gap:8px;align-items:center;
+    padding:8px 0;border-bottom:1px dashed var(--paper-line);
+  }
+  .item-row input, .item-row select{
+    font-family:'Space Mono';font-size:12.5px;border:1px solid var(--paper-line);background:#fff;color:var(--ink);
+    border-radius:6px;padding:6px 8px;outline:none;width:100%;
+  }
+  .item-row .i-remove{
+    background:none;border:none;color:#a05a4a;cursor:pointer;font-size:14px;padding:4px 6px;
+  }
+  @media(max-width:560px){
+    .item-row{grid-template-columns:1fr 1fr;grid-template-rows:auto auto;}
+    .item-row .i-remove{justify-self:end;}
+  }
+
   /* receipt tape */
   .tape-wrap{margin-top:26px;}
   .tape-title{font-family:'Barlow Condensed';text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-size:13px;margin-bottom:10px;}
@@ -258,14 +275,13 @@ const fmt = (n) => "$" + n.toFixed(2);
 
 async function loadExpenses(){
   try{
-    const res = await window.storage.get('expenses-data', false);
-    expenses = res && res.value ? JSON.parse(res.value) : [];
+    const raw = localStorage.getItem('expenses-data');
+    expenses = raw ? JSON.parse(raw) : [];
   }catch(e){
     expenses = [];
   }
   try{
-    const r = await window.storage.get('business-rubro', false);
-    RUBRO = r && r.value ? r.value : null;
+    RUBRO = localStorage.getItem('business-rubro') || null;
   }catch(e){
     RUBRO = null;
   }
@@ -281,7 +297,7 @@ async function loadExpenses(){
 
 async function saveExpenses(){
   try{
-    await window.storage.set('expenses-data', JSON.stringify(expenses), false);
+    localStorage.setItem('expenses-data', JSON.stringify(expenses));
   }catch(e){
     console.error('No se pudo guardar', e);
   }
@@ -292,7 +308,7 @@ async function saveRubro(value){
   CATEGORIES = CATEGORY_SETS[value];
   document.getElementById('rubroLabel').textContent = value;
   try{
-    await window.storage.set('business-rubro', value, false);
+    localStorage.setItem('business-rubro', value);
   }catch(e){
     console.error('No se pudo guardar el rubro', e);
   }
@@ -498,67 +514,100 @@ async function handleFile(ev){
       throw new Error(parsed.error || `Error ${response.status} al leer el documento`);
     }
 
-    if(!CATEGORIES.includes(parsed.categoria)) parsed.categoria = CATEGORIES[CATEGORIES.length-1];
-    parsed.valor = parseFloat(parsed.valor) || 0;
+    const items = (parsed.items || []).map(it => ({
+      producto: it.producto || '',
+      categoria: CATEGORIES.includes(it.categoria) ? it.categoria : CATEGORIES[CATEGORIES.length-1],
+      valor: parseFloat(it.valor) || 0
+    }));
+    if(items.length === 0) items.push({ producto:'', categoria: CATEGORIES[CATEGORIES.length-1], valor: 0 });
 
-    pendingAI = { ...parsed };
+    pendingAI = { tienda: parsed.tienda || '', fecha: parsed.fecha || today, items: items.map(i=>({...i})) };
     statusEl.textContent = '';
-    showConfirm(parsed);
+    showConfirmItems({ tienda: parsed.tienda || '', fecha: parsed.fecha || today, items });
   }catch(e){
     console.error(e);
     statusEl.textContent = 'No se pudo leer automáticamente (' + e.message + '). Ingresa los datos manualmente abajo.';
     pendingAI = null;
-    showConfirm({ producto:'', categoria:CATEGORIES[CATEGORIES.length-1], valor:0, tienda:'', fecha:new Date().toISOString().slice(0,10) });
+    showConfirmItems({ tienda:'', fecha:new Date().toISOString().slice(0,10), items:[{ producto:'', categoria:CATEGORIES[CATEGORIES.length-1], valor:0 }] });
   }finally{
     ev.target.value = '';
   }
 }
 
-function showConfirm(data){
+function showConfirmItems(data){
   const zone = document.getElementById('confirmZone');
-  zone.innerHTML = `
-    <div class="confirm">
-      <h4>Confirma los datos antes de guardar</h4>
-      <div class="field"><label>Producto</label><input id="f-producto" value="${data.producto || ''}"></div>
-      <div class="field"><label>Categoría</label>
-        <select id="f-categoria">${CATEGORIES.map(c=>`<option ${c===data.categoria?'selected':''}>${c}</option>`).join('')}</select>
+  let rows = data.items.map(it => ({ ...it }));
+
+  function renderRows(){
+    const rowsHtml = rows.map((it, idx) => `
+      <div class="item-row" data-idx="${idx}">
+        <input class="i-producto" placeholder="Producto" value="${it.producto}">
+        <select class="i-categoria">${CATEGORIES.map(c=>`<option ${c===it.categoria?'selected':''}>${c}</option>`).join('')}</select>
+        <input class="i-valor" type="number" step="0.01" value="${it.valor}">
+        <button class="i-remove" title="Quitar este producto">✕</button>
       </div>
-      <div class="field"><label>Valor</label><input id="f-valor" type="number" step="0.01" value="${data.valor}"></div>
-      <div class="field"><label>Tienda / lugar</label><input id="f-tienda" value="${data.tienda || ''}"></div>
-      <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${data.fecha}"></div>
-      <div class="confirm-actions">
-        <button class="btn btn-primary" id="saveBtn">Guardar gasto</button>
-        <button class="btn btn-ghost" id="cancelBtn">Cancelar</button>
+    `).join('');
+    zone.innerHTML = `
+      <div class="confirm">
+        <h4>Confirma los datos antes de guardar</h4>
+        <div class="field"><label>Tienda / lugar</label><input id="f-tienda" value="${data.tienda}"></div>
+        <div class="field"><label>Fecha</label><input id="f-fecha" type="date" value="${data.fecha}"></div>
+        <div class="items-list">${rowsHtml}</div>
+        <button class="btn btn-ghost" id="addItemBtn" style="margin-top:8px;">+ Agregar producto</button>
+        <div class="confirm-actions">
+          <button class="btn btn-primary" id="saveBtn">Guardar todo</button>
+          <button class="btn btn-ghost" id="cancelBtn">Cancelar</button>
+        </div>
       </div>
-    </div>
-  `;
-  document.getElementById('saveBtn').onclick = async () => {
-    const entry = {
-      producto: document.getElementById('f-producto').value || 'Sin nombre',
-      categoria: document.getElementById('f-categoria').value,
-      valor: parseFloat(document.getElementById('f-valor').value) || 0,
-      tienda: document.getElementById('f-tienda').value || 'No especificado',
-      fecha: document.getElementById('f-fecha').value,
-      flagged: false
-    };
-    let camposCorregidos = [];
-    if(pendingAI){
-      ['producto','categoria','tienda','fecha'].forEach(f => {
-        if((entry[f]||'').toString().trim() !== (pendingAI[f]||'').toString().trim()) camposCorregidos.push(f);
+    `;
+    zone.querySelectorAll('.item-row').forEach(rowEl => {
+      const idx = parseInt(rowEl.dataset.idx, 10);
+      rowEl.querySelector('.i-producto').addEventListener('input', e => rows[idx].producto = e.target.value);
+      rowEl.querySelector('.i-categoria').addEventListener('change', e => rows[idx].categoria = e.target.value);
+      rowEl.querySelector('.i-valor').addEventListener('input', e => rows[idx].valor = parseFloat(e.target.value) || 0);
+      rowEl.querySelector('.i-remove').addEventListener('click', () => {
+        rows.splice(idx, 1);
+        if(rows.length === 0) rows.push({ producto:'', categoria:CATEGORIES[CATEGORIES.length-1], valor:0 });
+        renderRows();
       });
-      if(Math.abs(entry.valor - (pendingAI.valor||0)) > 0.01) camposCorregidos.push('valor');
-      entry.aiCorregido = camposCorregidos.length > 0;
-    } else {
-      entry.aiCorregido = null; // se ingresó manual, no aplica a la métrica de precisión
-    }
-    expenses.push(entry);
-    pendingAI = null;
-    await saveExpenses();
-    zone.innerHTML = '';
-    populateMonthSelect();
-    render();
-  };
-  document.getElementById('cancelBtn').onclick = () => zone.innerHTML = '';
+    });
+    document.getElementById('addItemBtn').addEventListener('click', () => {
+      rows.push({ producto:'', categoria:CATEGORIES[CATEGORIES.length-1], valor:0 });
+      renderRows();
+    });
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const tienda = document.getElementById('f-tienda').value || 'No especificado';
+      const fecha = document.getElementById('f-fecha').value;
+      rows.forEach((r, idx) => {
+        const entry = {
+          producto: r.producto || 'Sin nombre',
+          categoria: r.categoria,
+          valor: r.valor,
+          tienda,
+          fecha,
+          flagged: false
+        };
+        const aiItem = pendingAI && pendingAI.items[idx];
+        if(aiItem){
+          const cambios = (entry.producto.trim() !== (aiItem.producto||'').trim())
+            || (entry.categoria !== aiItem.categoria)
+            || (Math.abs(entry.valor - aiItem.valor) > 0.01);
+          entry.aiCorregido = cambios;
+        } else {
+          entry.aiCorregido = null; // producto agregado a mano, no cuenta en la métrica de precisión
+        }
+        expenses.push(entry);
+      });
+      pendingAI = null;
+      await saveExpenses();
+      zone.innerHTML = '';
+      populateMonthSelect();
+      render();
+    });
+    document.getElementById('cancelBtn').addEventListener('click', () => zone.innerHTML = '');
+  }
+
+  renderRows();
 }
 
 // ---- tabs ----
@@ -574,12 +623,12 @@ document.querySelectorAll('.tab').forEach(btn => {
 
 // ---- reset ----
 document.getElementById('resetLink').addEventListener('click', async () => {
-  if(!confirm('¿Borrar todos los gastos y el rubro guardados en esta demo?')) return;
+  if(!confirm('¿Borrar todos los gastos y el rubro guardados en este navegador?')) return;
   expenses = [];
   RUBRO = null;
   try{
-    await window.storage.set('expenses-data', JSON.stringify([]), false);
-    await window.storage.delete('business-rubro', false);
+    localStorage.removeItem('expenses-data');
+    localStorage.removeItem('business-rubro');
   }catch(e){}
   document.getElementById('rubroLabel').textContent = '—';
   populateMonthSelect();
