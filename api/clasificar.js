@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 {"producto": "nombre breve del producto o compra principal", "categoria": "una de estas opciones exactas: ${(categorias || []).join(', ')}", "valor": numero_total_pagado_como_numero, "tienda": "nombre del lugar donde se compró", "fecha": "YYYY-MM-DD, usa ${fechaHoy} si no puedes leer la fecha"}`;
 
   try {
-    const model = 'gemini-2.5-flash-lite';
+    const model = 'gemini-3.5-flash-lite';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
     const response = await fetch(url, {
