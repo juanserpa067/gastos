@@ -15,8 +15,9 @@ export default async function handler(req, res) {
 
   const mimeType = isPdf ? 'application/pdf' : (mediaType || 'image/jpeg');
 
-  const prompt = `Analiza esta factura o recibo de un negocio del rubro "${rubro || 'general'}". Responde SOLO con un objeto JSON, sin texto adicional, sin markdown, con exactamente estas claves:
-{"producto": "nombre breve del producto o compra principal", "categoria": "una de estas opciones exactas: ${(categorias || []).join(', ')}", "valor": numero_total_pagado_como_numero, "tienda": "nombre del lugar donde se compró", "fecha": "YYYY-MM-DD, usa ${fechaHoy} si no puedes leer la fecha"}`;
+  const prompt = `Analiza esta factura o recibo de un negocio del rubro "${rubro || 'general'}". Identifica CADA producto o línea individual de la factura por separado (no los agrupes). Responde SOLO con un objeto JSON, sin texto adicional, sin markdown, con exactamente esta forma:
+{"tienda": "nombre del lugar donde se compró", "fecha": "YYYY-MM-DD, usa ${fechaHoy} si no puedes leer la fecha", "items": [{"producto": "nombre breve de ESTE producto o línea", "categoria": "una de estas opciones exactas: ${(categorias || []).join(', ')}", "valor": precio_de_este_producto_como_numero}]}
+Incluye un objeto dentro de "items" por cada producto distinto de la factura, con su propio valor individual (no el total de la factura).`;
 
   try {
     const model = 'gemini-3.5-flash-lite';
