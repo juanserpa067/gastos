@@ -1,5 +1,6 @@
 // Esta función vive en el servidor de Vercel, nunca en el navegador.
 // Por eso puede usar tu llave de API sin exponerla a quien use la app.
+// Usa Google Gemini (más barato, con nivel gratuito para este volumen).
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,37 +13,38 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Falta el archivo (base64)' });
   }
 
-  const contentBlock = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-    : { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } };
+  const mimeType = isPdf ? 'application/pdf' : (mediaType || 'image/jpeg');
 
   const prompt = `Analiza esta factura o recibo de un negocio del rubro "${rubro || 'general'}". Responde SOLO con un objeto JSON, sin texto adicional, sin markdown, con exactamente estas claves:
 {"producto": "nombre breve del producto o compra principal", "categoria": "una de estas opciones exactas: ${(categorias || []).join(', ')}", "valor": numero_total_pagado_como_numero, "tienda": "nombre del lugar donde se compró", "fecha": "YYYY-MM-DD, usa ${fechaHoy} si no puedes leer la fecha"}`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const model = 'gemini-2.5-flash-lite';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }]
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType, data: base64 } }
+          ]
+        }],
+        generationConfig: { responseMimeType: 'application/json' }
       })
     });
 
     const data = await response.json();
 
-    if (!response.ok || data.type === 'error') {
+    if (!response.ok || data.error) {
       return res.status(response.status || 500).json({
         error: (data.error && data.error.message) || 'Error al llamar a la IA'
       });
     }
 
-    const rawText = (data.content || []).map(b => b.text || '').join('');
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
