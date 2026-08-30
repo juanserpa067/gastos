@@ -157,6 +157,9 @@
   .cat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13.5px;}
   .cat-bar{height:6px;border-radius:99px;background:rgba(255,255,255,.08);margin-top:6px;overflow:hidden;}
   .cat-bar > div{height:100%;background:var(--led-green);}
+  .cat-bar > div.ok{background:var(--led-green);}
+  .cat-bar > div.warn{background:var(--led-amber);}
+  .cat-bar > div.over{background:var(--led-red);}
   .reset-link{display:block;text-align:center;margin-top:30px;font-family:'Space Mono';font-size:11.5px;color:var(--muted-2);cursor:pointer;text-decoration:underline;}
 
   /* rubro selector / settings */
@@ -186,6 +189,10 @@
     background:none;border:none;cursor:pointer;font-size:13px;opacity:.4;padding:0 0 0 8px;
   }
   .flag-btn.flagged{opacity:1;}
+  .edit-btn{
+    background:none;border:none;cursor:pointer;font-size:12.5px;opacity:.4;padding:0 0 0 6px;
+  }
+  .edit-btn:hover{opacity:1;}
   .precision-stat{
     font-family:'Space Mono';font-size:12.5px;color:var(--muted);margin-bottom:14px;
     display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:10px;
@@ -211,6 +218,7 @@
       <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
         <select class="month-select" id="monthSelect"></select>
         <button class="rubro-btn" id="rubroBtn">perfil: <span id="rubroLabel">—</span></button>
+        <button class="rubro-btn" id="budgetBtn" style="display:none;">✏️ presupuesto</button>
       </div>
     </div>
   </div>
@@ -261,6 +269,12 @@
         <div id="priceHistory"></div>
       </div>
     </div>
+    <div class="grid2" id="budgetGrid" style="margin-top:16px; display:none;">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h4>Presupuesto por porcentaje</h4>
+        <div id="budgetBreakdown"></div>
+      </div>
+    </div>
   </div>
 
   <div class="reset-link" id="resetLink">borrar todos los datos de esta demo</div>
@@ -280,6 +294,22 @@ let CATEGORIES = CATEGORY_SETS["Otro"];
 let expenses = [];
 let chartRef = null;
 let pendingAI = null;
+let INGRESO = 0;
+let SPLIT = { necesidades:50, deseos:30, ahorro:20 };
+
+const PERSONAL_BUCKETS = {
+  "Vivienda / arriendo": "necesidades",
+  "Alimentación": "necesidades",
+  "Transporte": "necesidades",
+  "Salud": "necesidades",
+  "Deudas": "necesidades",
+  "Entretenimiento": "deseos",
+  "Ropa": "deseos",
+  "Suscripciones": "deseos",
+  "Otros": "deseos",
+  "Ahorro": "ahorro"
+};
+const BUCKET_LABELS = { necesidades: "Necesidades", deseos: "Deseos", ahorro: "Ahorro" };
 
 const monthKey = (d) => d.slice(0,7); // "YYYY-MM"
 const monthLabel = (key) => {
@@ -307,8 +337,65 @@ async function loadExpenses(){
   } else {
     showOnboarding();
   }
+  await loadBudget();
+  updateBudgetBtnVisibility();
   populateMonthSelect();
   render();
+}
+
+async function loadBudget(){
+  try{
+    INGRESO = parseFloat(localStorage.getItem('ingreso-mensual')) || 0;
+  }catch(e){
+    INGRESO = 0;
+  }
+  try{
+    const raw = localStorage.getItem('budget-split');
+    SPLIT = raw ? JSON.parse(raw) : { necesidades:50, deseos:30, ahorro:20 };
+  }catch(e){
+    SPLIT = { necesidades:50, deseos:30, ahorro:20 };
+  }
+}
+
+async function saveBudget(ingreso, split){
+  INGRESO = ingreso;
+  SPLIT = split;
+  try{
+    localStorage.setItem('ingreso-mensual', String(ingreso));
+    localStorage.setItem('budget-split', JSON.stringify(split));
+  }catch(e){
+    console.error('No se pudo guardar el presupuesto', e);
+  }
+}
+
+function updateBudgetBtnVisibility(){
+  document.getElementById('budgetBtn').style.display = (RUBRO === 'Finanzas personales') ? 'inline-block' : 'none';
+}
+
+function showBudgetSetup(){
+  const modal = document.getElementById('onboardingModal');
+  modal.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <h3>Reparte tu ingreso</h3>
+        <p>Regla clásica 50/30/20: necesidades, deseos y ahorro. Ajusta los porcentajes si quieres.</p>
+        <div class="field"><label>Ingreso mensual aprox.</label><input id="b-ingreso" type="number" step="0.01" value="${INGRESO || ''}" placeholder="$"></div>
+        <div class="field"><label>% Necesidades</label><input id="b-nec" type="number" value="${SPLIT.necesidades}"></div>
+        <div class="field"><label>% Deseos</label><input id="b-des" type="number" value="${SPLIT.deseos}"></div>
+        <div class="field"><label>% Ahorro</label><input id="b-ahorro" type="number" value="${SPLIT.ahorro}"></div>
+        <button class="btn btn-primary" id="budgetSave" style="width:100%;margin-top:8px;">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('budgetSave').onclick = async () => {
+    const ingreso = parseFloat(document.getElementById('b-ingreso').value) || 0;
+    const nec = parseFloat(document.getElementById('b-nec').value) || 0;
+    const des = parseFloat(document.getElementById('b-des').value) || 0;
+    const ahorro = parseFloat(document.getElementById('b-ahorro').value) || 0;
+    await saveBudget(ingreso, { necesidades:nec, deseos:des, ahorro:ahorro });
+    modal.innerHTML = '';
+    render();
+  };
 }
 
 async function saveExpenses(){
@@ -344,13 +431,20 @@ function showOnboarding(){
     </div>
   `;
   document.getElementById('rubroSave').onclick = async () => {
-    await saveRubro(document.getElementById('rubroSelect').value);
-    modal.innerHTML = '';
-    render();
+    const val = document.getElementById('rubroSelect').value;
+    await saveRubro(val);
+    updateBudgetBtnVisibility();
+    if(val === 'Finanzas personales'){
+      showBudgetSetup();
+    } else {
+      modal.innerHTML = '';
+      render();
+    }
   };
 }
 
 document.getElementById('rubroBtn').addEventListener('click', showOnboarding);
+document.getElementById('budgetBtn').addEventListener('click', showBudgetSetup);
 
 function populateMonthSelect(){
   const sel = document.getElementById('monthSelect');
@@ -413,7 +507,7 @@ function render(){
       <div class="receipt-row">
         <div class="r1">
           <span>${e.producto}${e.aiCorregido ? '<span class="badge-corregido">corregido</span>' : ''}</span>
-          <span>${fmt(e.valor)}<button class="flag-btn ${e.flagged?'flagged':''}" data-idx="${realIdx}" title="Marcar que esta clasificación no sirvió">👎</button></span>
+          <span>${fmt(e.valor)}<button class="flag-btn ${e.flagged?'flagged':''}" data-idx="${realIdx}" title="Marcar que esta clasificación no sirvió">👎</button><button class="edit-btn" data-idx="${realIdx}" title="Editar o eliminar">✎</button></span>
         </div>
         <div class="r2"><span>${e.categoria} · ${e.tienda}</span><span>${e.fecha}</span></div>
       </div>
@@ -427,9 +521,58 @@ function render(){
         render();
       });
     });
+    tape.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        showEditExpense(idx);
+        document.getElementById('confirmZone').scrollIntoView({ behavior:'smooth' });
+      });
+    });
   }
 
   renderAnalysis(thisMonth, prevMonthExp, month, prevKey);
+}
+
+function showEditExpense(idx){
+  const e = expenses[idx];
+  const zone = document.getElementById('confirmZone');
+  zone.innerHTML = `
+    <div class="confirm">
+      <h4>Editar gasto</h4>
+      <div class="field"><label>Producto</label><input id="e-producto" value="${e.producto}"></div>
+      <div class="field"><label>Categoría</label>
+        <select id="e-categoria">${CATEGORIES.map(c=>`<option ${c===e.categoria?'selected':''}>${c}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Valor</label><input id="e-valor" type="number" step="0.01" value="${e.valor}"></div>
+      <div class="field"><label>Tienda / lugar</label><input id="e-tienda" value="${e.tienda}"></div>
+      <div class="field"><label>Fecha</label><input id="e-fecha" type="date" value="${e.fecha}"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-primary" id="editSaveBtn">Guardar cambios</button>
+        <button class="btn btn-ghost" id="editDeleteBtn" style="color:#a05a4a;">Eliminar</button>
+        <button class="btn btn-ghost" id="editCancelBtn">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('editSaveBtn').onclick = async () => {
+    expenses[idx].producto = document.getElementById('e-producto').value || 'Sin nombre';
+    expenses[idx].categoria = document.getElementById('e-categoria').value;
+    expenses[idx].valor = parseFloat(document.getElementById('e-valor').value) || 0;
+    expenses[idx].tienda = document.getElementById('e-tienda').value || 'No especificado';
+    expenses[idx].fecha = document.getElementById('e-fecha').value;
+    await saveExpenses();
+    zone.innerHTML = '';
+    populateMonthSelect();
+    render();
+  };
+  document.getElementById('editDeleteBtn').onclick = async () => {
+    if(!confirm('¿Eliminar este gasto?')) return;
+    expenses.splice(idx, 1);
+    await saveExpenses();
+    zone.innerHTML = '';
+    populateMonthSelect();
+    render();
+  };
+  document.getElementById('editCancelBtn').onclick = () => zone.innerHTML = '';
 }
 
 function renderAnalysis(thisMonth, prevMonthExp, month, prevKey){
@@ -486,6 +629,34 @@ function renderAnalysis(thisMonth, prevMonthExp, month, prevKey){
 
   renderProviderBreakdown(thisMonth);
   renderPriceHistory();
+  renderBudgetBreakdown(thisMonth);
+}
+
+function renderBudgetBreakdown(thisMonth){
+  const grid = document.getElementById('budgetGrid');
+  if(RUBRO !== 'Finanzas personales' || !INGRESO){
+    grid.style.display = 'none';
+    return;
+  }
+  grid.style.display = 'grid';
+  const totals = { necesidades:0, deseos:0, ahorro:0 };
+  thisMonth.forEach(e => {
+    const bucket = PERSONAL_BUCKETS[e.categoria] || 'deseos';
+    totals[bucket] += e.valor;
+  });
+  const el = document.getElementById('budgetBreakdown');
+  el.innerHTML = Object.keys(BUCKET_LABELS).map(key => {
+    const pct = SPLIT[key] || 0;
+    const allowed = INGRESO * (pct / 100);
+    const spent = totals[key];
+    const ratio = allowed > 0 ? (spent / allowed) : 0;
+    const cls = ratio > 1 ? 'over' : (ratio > 0.9 ? 'warn' : 'ok');
+    const width = Math.min(ratio, 1) * 100;
+    return `
+      <div class="cat-row"><span>${BUCKET_LABELS[key]} (${pct}% · presupuesto ${fmt(allowed)})</span><span>${fmt(spent)}</span></div>
+      <div class="cat-bar"><div class="${cls}" style="width:${width.toFixed(0)}%"></div></div>
+    `;
+  }).join('');
 }
 
 function renderProviderBreakdown(thisMonth){
@@ -708,11 +879,16 @@ document.getElementById('resetLink').addEventListener('click', async () => {
   if(!confirm('¿Borrar todos los gastos y el rubro guardados en este navegador?')) return;
   expenses = [];
   RUBRO = null;
+  INGRESO = 0;
+  SPLIT = { necesidades:50, deseos:30, ahorro:20 };
   try{
     localStorage.removeItem('expenses-data');
     localStorage.removeItem('business-rubro');
+    localStorage.removeItem('ingreso-mensual');
+    localStorage.removeItem('budget-split');
   }catch(e){}
   document.getElementById('rubroLabel').textContent = '—';
+  updateBudgetBtnVisibility();
   populateMonthSelect();
   showOnboarding();
 });
