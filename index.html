@@ -33,7 +33,6 @@
   }
   .app{max-width:920px;margin:0 auto;padding:28px 20px 80px;}
 
-  /* header / register display */
   .register{
     background:linear-gradient(180deg,var(--panel),var(--panel-2));
     border-radius:18px;
@@ -79,7 +78,6 @@
   }
   .tab.active{background:var(--panel-2);color:#EDEFF0;border-color:rgba(255,255,255,.2);}
 
-  /* upload slot */
   .slot{
     border:1.5px dashed rgba(255,255,255,.22);
     border-radius:16px;
@@ -97,7 +95,6 @@
 
   .status{margin-top:14px;font-family:'Space Mono';font-size:12.5px;color:var(--muted);text-align:center;min-height:16px;}
 
-  /* pending confirm card */
   .confirm{
     background:var(--paper);color:var(--ink);border-radius:14px;padding:18px;margin-top:18px;
     font-family:'Manrope';
@@ -135,7 +132,6 @@
     .item-row .i-remove{justify-self:end;}
   }
 
-  /* receipt tape */
   .tape-wrap{margin-top:26px;}
   .tape-title{font-family:'Barlow Condensed';text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-size:13px;margin-bottom:10px;}
   .tape{background:var(--paper);border-radius:4px;position:relative;padding:14px 16px 4px;color:var(--ink);}
@@ -149,7 +145,6 @@
   .receipt-row .r2{display:flex;justify-content:space-between;color:#6b6248;margin-top:3px;}
   .empty{color:#8b8261;font-family:'Space Mono';font-size:12.5px;text-align:center;padding:24px 0;}
 
-  /* analysis */
   .grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:6px;}
   @media(max-width:720px){.grid2{grid-template-columns:1fr;}}
   .card{background:var(--panel);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.06);}
@@ -162,7 +157,6 @@
   .cat-bar > div.over{background:var(--led-red);}
   .reset-link{display:block;text-align:center;margin-top:30px;font-family:'Space Mono';font-size:11.5px;color:var(--muted-2);cursor:pointer;text-decoration:underline;}
 
-  /* rubro selector / settings */
   .rubro-btn{
     background:transparent;border:1px solid rgba(255,255,255,.14);color:var(--muted);
     font-family:'Space Mono';font-size:11.5px;padding:6px 10px;border-radius:8px;cursor:pointer;
@@ -180,7 +174,6 @@
     border:1px solid var(--paper-line);background:#fff;color:var(--ink);margin-bottom:14px;
   }
 
-  /* correction badge + feedback flag */
   .badge-corregido{
     display:inline-block;font-family:'Space Mono';font-size:10.5px;color:var(--led-amber);
     border:1px solid rgba(255,180,84,.35);border-radius:6px;padding:1px 6px;margin-left:6px;
@@ -217,7 +210,11 @@
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
         <select class="month-select" id="monthSelect"></select>
-        <button class="rubro-btn" id="rubroBtn">perfil: <span id="rubroLabel">—</span></button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select class="month-select" id="workspaceSelect" style="max-width:160px;"></select>
+          <button class="rubro-btn" id="addWorkspaceBtn" title="Crear otro espacio">+ espacio</button>
+          <button class="rubro-btn" id="deleteWorkspaceBtn" title="Eliminar este espacio">🗑</button>
+        </div>
         <button class="rubro-btn" id="budgetBtn" style="display:none;">✏️ presupuesto</button>
       </div>
     </div>
@@ -277,7 +274,7 @@
     </div>
   </div>
 
-  <div class="reset-link" id="resetLink">borrar todos los datos de esta demo</div>
+  <div class="reset-link" id="resetLink">borrar los gastos de este espacio</div>
 </div>
 
 <script>
@@ -289,6 +286,8 @@ const CATEGORY_SETS = {
   "Finanzas personales": ["Alimentación","Vivienda / arriendo","Transporte","Entretenimiento","Salud","Educación","Ropa","Suscripciones","Ahorro","Deudas","Otros"],
   "Otro": ["Alimentos","Transporte","Hogar","Insumos","Entretenimiento","Salud","Servicios","Otros"]
 };
+let workspaces = [];
+let activeWorkspaceId = null;
 let RUBRO = null;
 let CATEGORIES = CATEGORY_SETS["Otro"];
 let expenses = [];
@@ -311,7 +310,7 @@ const PERSONAL_BUCKETS = {
 };
 const BUCKET_LABELS = { necesidades: "Necesidades", deseos: "Deseos", ahorro: "Ahorro" };
 
-const monthKey = (d) => d.slice(0,7); // "YYYY-MM"
+const monthKey = (d) => d.slice(0,7);
 const monthLabel = (key) => {
   const [y,m] = key.split('-');
   const names = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -319,38 +318,124 @@ const monthLabel = (key) => {
 };
 const fmt = (n) => "$" + n.toFixed(2);
 
-async function loadExpenses(){
+async function initApp(){
   try{
-    const raw = localStorage.getItem('expenses-data');
+    workspaces = JSON.parse(localStorage.getItem('workspaces') || '[]');
+  }catch(e){
+    workspaces = [];
+  }
+  try{
+    activeWorkspaceId = localStorage.getItem('active-workspace') || null;
+  }catch(e){
+    activeWorkspaceId = null;
+  }
+
+  if(workspaces.length === 0){
+    showCreateWorkspace(true);
+    return;
+  }
+  if(!activeWorkspaceId || !workspaces.find(w => w.id === activeWorkspaceId)){
+    activeWorkspaceId = workspaces[0].id;
+  }
+  populateWorkspaceSelect();
+  await activateWorkspace(activeWorkspaceId);
+}
+
+function saveWorkspacesList(){
+  try{ localStorage.setItem('workspaces', JSON.stringify(workspaces)); }catch(e){}
+}
+
+function populateWorkspaceSelect(){
+  const sel = document.getElementById('workspaceSelect');
+  sel.innerHTML = workspaces.map(w => `<option value="${w.id}" ${w.id===activeWorkspaceId?'selected':''}>${w.label}</option>`).join('');
+}
+
+document.getElementById('workspaceSelect').addEventListener('change', async (e) => {
+  await activateWorkspace(e.target.value);
+});
+
+document.getElementById('addWorkspaceBtn').addEventListener('click', () => showCreateWorkspace(false));
+
+document.getElementById('deleteWorkspaceBtn').addEventListener('click', async () => {
+  if(workspaces.length <= 1){
+    alert('Debe existir al menos un espacio.');
+    return;
+  }
+  const current = workspaces.find(w => w.id === activeWorkspaceId);
+  if(!confirm(`¿Eliminar el espacio "${current.label}" y todos sus gastos? Esto no se puede deshacer.`)) return;
+  try{
+    localStorage.removeItem('expenses-data:' + activeWorkspaceId);
+    localStorage.removeItem('ingreso-mensual:' + activeWorkspaceId);
+    localStorage.removeItem('budget-split:' + activeWorkspaceId);
+  }catch(e){}
+  workspaces = workspaces.filter(w => w.id !== activeWorkspaceId);
+  saveWorkspacesList();
+  populateWorkspaceSelect();
+  await activateWorkspace(workspaces[0].id);
+});
+
+async function activateWorkspace(id){
+  activeWorkspaceId = id;
+  try{ localStorage.setItem('active-workspace', id); }catch(e){}
+
+  const ws = workspaces.find(w => w.id === id);
+  RUBRO = ws ? ws.rubro : null;
+  CATEGORIES = CATEGORY_SETS[RUBRO] || CATEGORY_SETS['Otro'];
+
+  try{
+    const raw = localStorage.getItem('expenses-data:' + id);
     expenses = raw ? JSON.parse(raw) : [];
   }catch(e){
     expenses = [];
   }
-  try{
-    RUBRO = localStorage.getItem('business-rubro') || null;
-  }catch(e){
-    RUBRO = null;
-  }
-  if(RUBRO && CATEGORY_SETS[RUBRO]){
-    CATEGORIES = CATEGORY_SETS[RUBRO];
-    document.getElementById('rubroLabel').textContent = RUBRO;
-  } else {
-    showOnboarding();
-  }
+
   await loadBudget();
   updateBudgetBtnVisibility();
+  populateWorkspaceSelect();
   populateMonthSelect();
   render();
 }
 
+function showCreateWorkspace(isFirst){
+  const modal = document.getElementById('onboardingModal');
+  const opts = Object.keys(CATEGORY_SETS);
+  modal.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <h3>${isFirst ? '¿Cómo vas a usar esta app?' : 'Crear nuevo espacio'}</h3>
+        <p>Cada espacio guarda sus propios gastos por separado — puedes tener uno para tu negocio y otro para tus finanzas personales.</p>
+        <div class="field"><label>Nombre del espacio</label><input id="ws-label" placeholder="Ej. Mi negocio"></div>
+        <select id="ws-rubro">${opts.map(o=>`<option>${o}</option>`).join('')}</select>
+        <button class="btn btn-primary" id="wsSave" style="width:100%;margin-top:6px;">Continuar</button>
+        ${!isFirst ? '<button class="btn btn-ghost" id="wsCancel" style="width:100%;margin-top:8px;">Cancelar</button>' : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('wsSave').onclick = async () => {
+    const rubro = document.getElementById('ws-rubro').value;
+    const label = document.getElementById('ws-label').value.trim() || rubro;
+    const id = 'ws_' + Date.now();
+    workspaces.push({ id, label, rubro });
+    saveWorkspacesList();
+    modal.innerHTML = '';
+    await activateWorkspace(id);
+    if(rubro === 'Finanzas personales'){
+      showBudgetSetup();
+    }
+  };
+  if(!isFirst){
+    document.getElementById('wsCancel').onclick = () => modal.innerHTML = '';
+  }
+}
+
 async function loadBudget(){
   try{
-    INGRESO = parseFloat(localStorage.getItem('ingreso-mensual')) || 0;
+    INGRESO = parseFloat(localStorage.getItem('ingreso-mensual:' + activeWorkspaceId)) || 0;
   }catch(e){
     INGRESO = 0;
   }
   try{
-    const raw = localStorage.getItem('budget-split');
+    const raw = localStorage.getItem('budget-split:' + activeWorkspaceId);
     SPLIT = raw ? JSON.parse(raw) : { necesidades:50, deseos:30, ahorro:20 };
   }catch(e){
     SPLIT = { necesidades:50, deseos:30, ahorro:20 };
@@ -361,8 +446,8 @@ async function saveBudget(ingreso, split){
   INGRESO = ingreso;
   SPLIT = split;
   try{
-    localStorage.setItem('ingreso-mensual', String(ingreso));
-    localStorage.setItem('budget-split', JSON.stringify(split));
+    localStorage.setItem('ingreso-mensual:' + activeWorkspaceId, String(ingreso));
+    localStorage.setItem('budget-split:' + activeWorkspaceId, JSON.stringify(split));
   }catch(e){
     console.error('No se pudo guardar el presupuesto', e);
   }
@@ -371,6 +456,8 @@ async function saveBudget(ingreso, split){
 function updateBudgetBtnVisibility(){
   document.getElementById('budgetBtn').style.display = (RUBRO === 'Finanzas personales') ? 'inline-block' : 'none';
 }
+
+document.getElementById('budgetBtn').addEventListener('click', showBudgetSetup);
 
 function showBudgetSetup(){
   const modal = document.getElementById('onboardingModal');
@@ -400,51 +487,11 @@ function showBudgetSetup(){
 
 async function saveExpenses(){
   try{
-    localStorage.setItem('expenses-data', JSON.stringify(expenses));
+    localStorage.setItem('expenses-data:' + activeWorkspaceId, JSON.stringify(expenses));
   }catch(e){
     console.error('No se pudo guardar', e);
   }
 }
-
-async function saveRubro(value){
-  RUBRO = value;
-  CATEGORIES = CATEGORY_SETS[value];
-  document.getElementById('rubroLabel').textContent = value;
-  try{
-    localStorage.setItem('business-rubro', value);
-  }catch(e){
-    console.error('No se pudo guardar el rubro', e);
-  }
-}
-
-function showOnboarding(){
-  const modal = document.getElementById('onboardingModal');
-  const opts = Object.keys(CATEGORY_SETS);
-  modal.innerHTML = `
-    <div class="modal-overlay">
-      <div class="modal">
-        <h3>¿Cómo vas a usar esta app?</h3>
-        <p>Así ajustamos las categorías a lo que realmente compras, sea de tu negocio o de tu día a día.</p>
-        <select id="rubroSelect">${opts.map(o=>`<option>${o}</option>`).join('')}</select>
-        <button class="btn btn-primary" id="rubroSave" style="width:100%;">Continuar</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('rubroSave').onclick = async () => {
-    const val = document.getElementById('rubroSelect').value;
-    await saveRubro(val);
-    updateBudgetBtnVisibility();
-    if(val === 'Finanzas personales'){
-      showBudgetSetup();
-    } else {
-      modal.innerHTML = '';
-      render();
-    }
-  };
-}
-
-document.getElementById('rubroBtn').addEventListener('click', showOnboarding);
-document.getElementById('budgetBtn').addEventListener('click', showBudgetSetup);
 
 function populateMonthSelect(){
   const sel = document.getElementById('monthSelect');
@@ -495,7 +542,6 @@ function render(){
     }
   }
 
-  // tape
   document.getElementById('tapeTitle').textContent = `Gastos de ${monthLabel(month)}`;
   const tape = document.getElementById('tape');
   if(thisMonth.length === 0){
@@ -722,7 +768,6 @@ function renderPriceHistory(){
   }).join('');
 }
 
-// ---- file upload + AI classification ----
 document.getElementById('fileInput').addEventListener('change', handleFile);
 
 function fileToBase64(file){
@@ -743,9 +788,6 @@ async function handleFile(ev){
   try{
     const base64 = await fileToBase64(file);
     const isPdf = file.type === 'application/pdf';
-    const contentBlock = isPdf
-      ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data: base64 } }
-      : { type:'image', source:{ type:'base64', media_type: file.type || 'image/jpeg', data: base64 } };
 
     const today = new Date().toISOString().slice(0,10);
 
@@ -847,7 +889,7 @@ function showConfirmItems(data){
             || (Math.abs(entry.valor - aiItem.valor) > 0.01);
           entry.aiCorregido = cambios;
         } else {
-          entry.aiCorregido = null; // producto agregado a mano, no cuenta en la métrica de precisión
+          entry.aiCorregido = null;
         }
         expenses.push(entry);
       });
@@ -863,7 +905,6 @@ function showConfirmItems(data){
   renderRows();
 }
 
-// ---- tabs ----
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
@@ -874,26 +915,16 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
-// ---- reset ----
 document.getElementById('resetLink').addEventListener('click', async () => {
-  if(!confirm('¿Borrar todos los gastos y el rubro guardados en este navegador?')) return;
+  const ws = workspaces.find(w => w.id === activeWorkspaceId);
+  if(!confirm(`¿Borrar todos los gastos del espacio "${ws ? ws.label : ''}"? (el espacio y el presupuesto se mantienen)`)) return;
   expenses = [];
-  RUBRO = null;
-  INGRESO = 0;
-  SPLIT = { necesidades:50, deseos:30, ahorro:20 };
-  try{
-    localStorage.removeItem('expenses-data');
-    localStorage.removeItem('business-rubro');
-    localStorage.removeItem('ingreso-mensual');
-    localStorage.removeItem('budget-split');
-  }catch(e){}
-  document.getElementById('rubroLabel').textContent = '—';
-  updateBudgetBtnVisibility();
+  await saveExpenses();
   populateMonthSelect();
-  showOnboarding();
+  render();
 });
 
-loadExpenses();
+initApp();
 </script>
 </body>
 </html>
