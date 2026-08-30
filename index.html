@@ -210,7 +210,7 @@
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
         <select class="month-select" id="monthSelect"></select>
-        <button class="rubro-btn" id="rubroBtn">rubro: <span id="rubroLabel">—</span></button>
+        <button class="rubro-btn" id="rubroBtn">perfil: <span id="rubroLabel">—</span></button>
       </div>
     </div>
   </div>
@@ -253,7 +253,7 @@
     </div>
     <div class="grid2" style="margin-top:16px;">
       <div class="card">
-        <h4>Gasto por proveedor (este mes)</h4>
+        <h4>Gasto por lugar (este mes)</h4>
         <div id="providerBreakdown"></div>
       </div>
       <div class="card">
@@ -272,10 +272,11 @@ const CATEGORY_SETS = {
   "Mecánica": ["Repuestos","Herramientas","Insumos","Lubricantes","Servicios","Transporte","Otros"],
   "Retail / Moda": ["Mercadería","Empaques","Publicidad","Servicios","Transporte","Otros"],
   "Servicios profesionales": ["Suministros de oficina","Software / herramientas","Publicidad","Servicios","Transporte","Otros"],
-  "Otro rubro": ["Alimentos","Transporte","Hogar","Insumos","Entretenimiento","Salud","Servicios","Otros"]
+  "Finanzas personales": ["Alimentación","Vivienda / arriendo","Transporte","Entretenimiento","Salud","Educación","Ropa","Suscripciones","Ahorro","Deudas","Otros"],
+  "Otro": ["Alimentos","Transporte","Hogar","Insumos","Entretenimiento","Salud","Servicios","Otros"]
 };
 let RUBRO = null;
-let CATEGORIES = CATEGORY_SETS["Otro rubro"];
+let CATEGORIES = CATEGORY_SETS["Otro"];
 let expenses = [];
 let chartRef = null;
 let pendingAI = null;
@@ -335,8 +336,8 @@ function showOnboarding(){
   modal.innerHTML = `
     <div class="modal-overlay">
       <div class="modal">
-        <h3>¿A qué rubro se dedica tu negocio?</h3>
-        <p>Así ajustamos las categorías de gasto a lo que realmente compras.</p>
+        <h3>¿Cómo vas a usar esta app?</h3>
+        <p>Así ajustamos las categorías a lo que realmente compras, sea de tu negocio o de tu día a día.</p>
         <select id="rubroSelect">${opts.map(o=>`<option>${o}</option>`).join('')}</select>
         <button class="btn btn-primary" id="rubroSave" style="width:100%;">Continuar</button>
       </div>
